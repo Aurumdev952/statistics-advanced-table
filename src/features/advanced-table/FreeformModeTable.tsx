@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { FreeformModeConfig, CellConfig, MergeInfo, CellStyle } from "./types";
-import { coordsToCell, cellToCoords } from "./utils/cellReference";
+import { coordsToCell, cellToCoords, translateFormula } from "./utils/cellReference";
 import { CellEditor } from "./CellEditor";
 import { InlineCellEditor } from "./InlineCellEditor";
 import { FormulaBar } from "./FormulaBar";
@@ -71,6 +71,14 @@ export function FreeformModeTable({ config, data, onCellUpdate }: FreeformModeTa
 
   const getFormattedCellValue = (cellAddr: string): string => {
     const value = getCellValue(cellAddr);
+
+    // If value is an array, it shouldn't be displayed - this indicates a bug
+    // Arrays should have been filled into individual cells
+    if (Array.isArray(value)) {
+      console.warn(`Cell ${cellAddr} contains an array - this should not happen. Array values should be in filled cells.`);
+      return ""; // Don't display arrays
+    }
+
     const cellConfig = localCells[cellAddr];
     if (cellConfig?.formatting) {
       return formatCellValue(value, cellConfig.formatting);
@@ -393,19 +401,40 @@ export function FreeformModeTable({ config, data, onCellUpdate }: FreeformModeTa
   };
 
   const { copyCell, pasteCell } = useClipboard(localCells);
+  const [copiedSourceCell, setCopiedSourceCell] = useState<string | null>(null);
 
   const handleDelete = (cell: string) => {
     deleteCell(cell);
   };
 
   const handleCopy = (cell: string) => {
+    const cellConfig = localCells[cell];
+    if (cellConfig?.type === "formula") {
+      setCopiedSourceCell(cell);
+    } else {
+      setCopiedSourceCell(null);
+    }
     copyCell(cell);
   };
 
   const handlePaste = (cell: string) => {
     const cfg = pasteCell(cell);
     if (cfg) {
-      updateCell(cell, cfg);
+      let translatedConfig = { ...cfg };
+
+      if (cfg.type === "formula" && cfg.formula && copiedSourceCell) {
+        const translatedFormula = translateFormula(
+          cfg.formula,
+          copiedSourceCell,
+          cell
+        );
+        translatedConfig = {
+          ...cfg,
+          formula: translatedFormula,
+        };
+      }
+
+      updateCell(cell, translatedConfig);
     }
   };
 
@@ -514,14 +543,14 @@ export function FreeformModeTable({ config, data, onCellUpdate }: FreeformModeTa
                         <div className="absolute z-50 bg-white border rounded shadow-lg p-2" style={{ minWidth: "320px", left: "100%", top: 0, marginLeft: "4px" }}>
                           <CellEditor
                             cellConfig={cellConfig || null}
-                            cellAddress={cellAddr}
+                            cellAddress={masterCellAddr}
                             onSave={(cfg) => {
-                              updateCell(cellAddr, cfg);
+                              updateCell(masterCellAddr, cfg);
                               setEditingCell(null);
                             }}
                             onCancel={() => setEditingCell(null)}
                             onDelete={() => {
-                              deleteCell(cellAddr);
+                              deleteCell(masterCellAddr);
                               setEditingCell(null);
                             }}
                             availableCells={availableCells}
@@ -532,23 +561,32 @@ export function FreeformModeTable({ config, data, onCellUpdate }: FreeformModeTa
                           initialValue={cellConfig?.type === "formula" ? cellConfig.formula || "" : String(value || "")}
                           onSubmit={(val) => {
                             const trimmed = val || "";
+                            const existingConfig = localCells[masterCellAddr] || {};
                             if (trimmed.startsWith("=")) {
-                              updateCell(cellAddr, { type: "formula", formula: trimmed });
+                              updateCell(masterCellAddr, {
+                                ...existingConfig,
+                                type: "formula",
+                                formula: trimmed,
+                              });
                             } else {
-                              updateCell(cellAddr, { type: "static", content: trimmed });
+                              updateCell(masterCellAddr, {
+                                ...existingConfig,
+                                type: "static",
+                                content: trimmed,
+                              });
                             }
                             setInlineEditCell(null);
                           }}
                           onCancel={() => setInlineEditCell(null)}
                           onTab={() => {
                             setInlineEditCell(null);
-                            const { col } = cellToCoords(cellAddr);
+                            const { col } = cellToCoords(masterCellAddr);
                             const nextCol = Math.min(cols - 1, col + 1);
                             setSelectedCell(coordsToCell(rowIdx, nextCol));
                           }}
                           onShiftTab={() => {
                             setInlineEditCell(null);
-                            const { col } = cellToCoords(cellAddr);
+                            const { col } = cellToCoords(masterCellAddr);
                             const prevCol = Math.max(0, col - 1);
                             setSelectedCell(coordsToCell(rowIdx, prevCol));
                           }}

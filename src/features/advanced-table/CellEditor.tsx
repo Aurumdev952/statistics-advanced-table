@@ -41,11 +41,12 @@ export function CellEditor({
 
   const handleSave = () => {
     const newConfig: CellConfig = {
+      ...cellConfig,
       type,
       ...(type === "static" ? { content } : {}),
       ...(type === "formula" ? { formula } : {}),
       ...(type === "query" ? { query: cellConfig?.query } : {}),
-      ...(formatting ? { formatting } : {}),
+      formatting,
     };
     onSave(newConfig);
   };
@@ -58,8 +59,22 @@ export function CellEditor({
     }
   };
 
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+      e.preventDefault();
+      handleSave();
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      onCancel();
+    }
+  };
+
   return (
-    <div className="cell-editor p-4 border rounded bg-white shadow-lg min-w-[360px] space-y-4">
+    <div
+      className="cell-editor p-4 border rounded bg-white shadow-lg min-w-[360px] space-y-4"
+      onKeyDown={handleKeyDown}
+      tabIndex={0}
+    >
       <div className="flex items-center justify-between">
         <div className="text-sm font-semibold">Cell {cellAddress}</div>
         <div className="flex gap-2">

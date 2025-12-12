@@ -5,6 +5,9 @@ import pluginReact from 'eslint-plugin-react';
 import reactHooks from 'eslint-plugin-react-hooks';
 import reactRefresh from 'eslint-plugin-react-refresh';
 import pluginQuery from '@tanstack/eslint-plugin-query';
+import { createRequire } from 'module';
+
+const require = createRequire(import.meta.url);
 
 export default [
   {
@@ -80,3 +83,4 @@ export default [
     },
   },
 ];
+

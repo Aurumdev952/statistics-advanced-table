@@ -118,3 +118,78 @@ export function isRange(str: string): boolean {
   return /^\$?[A-Z]+\$?\d+:\$?[A-Z]+\$?\d+$/i.test(str);
 }
 
+export function translateCellReference(
+  ref: string,
+  sourceCell: string,
+  targetCell: string
+): string {
+  try {
+    const sourceCoords = cellToCoords(sourceCell);
+    const targetCoords = cellToCoords(targetCell);
+
+    const rowOffset = targetCoords.row - sourceCoords.row;
+    const colOffset = targetCoords.col - sourceCoords.col;
+
+    const parsed = parseCellReference(ref);
+
+    const newRow = parsed.rowAbsolute ? parsed.row : parsed.row + rowOffset;
+    const newCol = parsed.colAbsolute ? parsed.col : parsed.col + colOffset;
+
+    const finalRow = Math.max(0, newRow);
+    const finalCol = Math.max(0, newCol);
+
+    return coordsToCell(finalRow, finalCol, parsed.rowAbsolute, parsed.colAbsolute);
+  } catch (error) {
+    return ref;
+  }
+}
+
+export function translateRangeReference(
+  rangeStr: string,
+  sourceCell: string,
+  targetCell: string
+): string {
+  try {
+    const { start, end } = parseRange(rangeStr);
+    const translatedStart = translateCellReference(start, sourceCell, targetCell);
+    const translatedEnd = translateCellReference(end, sourceCell, targetCell);
+    return `${translatedStart}:${translatedEnd}`;
+  } catch (error) {
+    return rangeStr;
+  }
+}
+
+export function translateFormula(
+  formula: string,
+  sourceCell: string,
+  targetCell: string
+): string {
+  if (!formula || !formula.startsWith("=")) {
+    return formula;
+  }
+
+  try {
+    const formulaBody = formula.substring(1);
+
+    const cellRefPattern = /(\$?[A-Z]+\$?\d+)/gi;
+    const rangePattern = /(\$?[A-Z]+\$?\d+:\$?[A-Z]+\$?\d+)/gi;
+
+    let translated = formulaBody;
+
+    translated = translated.replace(rangePattern, (match) => {
+      return translateRangeReference(match, sourceCell, targetCell);
+    });
+
+    translated = translated.replace(cellRefPattern, (match) => {
+      if (!isRange(match)) {
+        return translateCellReference(match, sourceCell, targetCell);
+      }
+      return match;
+    });
+
+    return `=${translated}`;
+  } catch (error) {
+    return formula;
+  }
+}
+
