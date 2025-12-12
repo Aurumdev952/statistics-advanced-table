@@ -21,6 +21,37 @@ interface MeasureRowProps {
   removeMeasureFilter: (measureIndex: number, filterIndex: number) => void;
 }
 
+const DimensionSelector = ({ datasetId, value, onChange }: { datasetId: string; value: string; onChange: (value: string) => void }) => {
+  const { data: schemaData, isLoading: schemaLoading } = useDatasetSchema(datasetId);
+
+  const dimensions = useMemo(() => {
+    if (!schemaData) return [];
+    return (schemaData.columns || []).filter((col: any) => col.role === "dimension");
+  }, [schemaData]);
+
+  return (
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      className="px-2 py-1 text-xs border rounded w-full"
+      disabled={schemaLoading || !datasetId}
+    >
+      <option value="">Select dimension</option>
+      {schemaLoading ? (
+        <option disabled>Loading...</option>
+      ) : dimensions.length === 0 ? (
+        <option disabled>No dimensions available</option>
+      ) : (
+        dimensions.map((col: any) => (
+          <option key={col.name} value={col.name}>
+            {col.display_name || col.name}
+          </option>
+        ))
+      )}
+    </select>
+  );
+};
+
 const allAggregations = [
   { value: "sum", label: "Sum", numeric: true },
   { value: "avg", label: "Average", numeric: true },
@@ -36,6 +67,12 @@ const allAggregations = [
 ];
 
 const operators = ["eq", "ne", "gt", "gte", "lt", "lte", "in", "not_in", "contains"];
+
+const isValidCellReference = (value: string): boolean => {
+  if (!value || typeof value !== "string") return false;
+  const cellRefPattern = /^\$?[A-Z]+\$?\d+$/i;
+  return cellRefPattern.test(value.trim());
+};
 
 const getAvailableFunctions = (dataType?: string): Array<{ value: string; label: string }> => {
   if (!dataType) {
@@ -56,6 +93,14 @@ export function QueryBuilder({ initialConfig, onSave, onCancel }: QueryBuilderPr
   const [measures, setMeasures] = useState(initialConfig?.measures || [{ dataset_id: "", field: "" }]);
   const [derivedColumns, setDerivedColumns] = useState(initialConfig?.derived_columns || []);
   const [formula, setFormula] = useState(initialConfig?.formula || "");
+  const [fillMode, setFillMode] = useState({
+    enabled: initialConfig?.fill_mode?.enabled || false,
+    direction: initialConfig?.fill_mode?.direction || "vertical",
+    target_range: initialConfig?.fill_mode?.target_range || null,
+    overflow_behavior: initialConfig?.fill_mode?.overflow_behavior || "truncate",
+    return_dimension: initialConfig?.fill_mode?.return_dimension ?? true,
+    return_measure: initialConfig?.fill_mode?.return_measure ?? false,
+  });
 
   // Track expanded filters per measure
   const [expandedFilters, setExpandedFilters] = useState<Record<number, boolean>>({});
@@ -86,6 +131,14 @@ export function QueryBuilder({ initialConfig, onSave, onCancel }: QueryBuilderPr
         formatting: dc.formatting,
       })),
       formula: formula.trim() || undefined,
+      fill_mode: fillMode.enabled ? {
+        enabled: true,
+        direction: fillMode.direction,
+        target_range: fillMode.target_range || undefined,
+        overflow_behavior: fillMode.overflow_behavior,
+        return_dimension: fillMode.return_dimension,
+        return_measure: fillMode.return_measure,
+      } : undefined,
     };
     onSave(config);
   };
@@ -314,18 +367,39 @@ export function QueryBuilder({ initialConfig, onSave, onCancel }: QueryBuilderPr
                     </option>
                   ))}
                 </select>
-                <input
-                  type="text"
-                  value={filter.value ?? ""}
-                  onChange={(e) => {
-                    e.stopPropagation();
-                    updateMeasureFilter(index, filterIndex, "value", e.target.value);
-                  }}
-                  onKeyDown={(e) => e.stopPropagation()}
-                  onClick={(e) => e.stopPropagation()}
-                  className="px-2 py-1 border rounded text-sm"
-                  placeholder="Value"
-                />
+                <div className="relative flex-1">
+                  <div className="flex gap-1">
+                    <input
+                      type="text"
+                      value={filter.value ?? ""}
+                      onChange={(e) => {
+                        e.stopPropagation();
+                        updateMeasureFilter(index, filterIndex, "value", e.target.value);
+                      }}
+                      onKeyDown={(e) => e.stopPropagation()}
+                      onClick={(e) => e.stopPropagation()}
+                      onFocus={(e) => e.stopPropagation()}
+                      className={`px-2 py-1 border rounded text-sm flex-1 ${
+                        isValidCellReference(filter.value ?? "")
+                          ? "border-green-500 bg-green-50"
+                          : "border-gray-300"
+                      }`}
+                      placeholder="Value or cell (e.g., 100 or A1)"
+                    />
+                    {isValidCellReference(filter.value ?? "") && (
+                      <div className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none">
+                        <span className="text-xs text-green-600" title="Valid cell reference">
+                          ✓
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                  {isValidCellReference(filter.value ?? "") && (
+                    <div className="text-xs text-gray-500 mt-0.5">
+                      Cell reference: {filter.value?.toUpperCase()}
+                    </div>
+                  )}
+                </div>
                 <button
                   type="button"
                   className="text-xs text-red-600 px-2 py-1"
@@ -478,6 +552,147 @@ export function QueryBuilder({ initialConfig, onSave, onCancel }: QueryBuilderPr
           </div>
         </div>
       )}
+
+      <div className="space-y-3 p-3 border rounded bg-gray-50">
+        <div className="flex items-center justify-between">
+          <label className="text-sm font-semibold">Fill Multiple Cells</label>
+          <input
+            type="checkbox"
+            checked={fillMode.enabled}
+            onChange={(e) => setFillMode({ ...fillMode, enabled: e.target.checked })}
+            className="w-4 h-4"
+          />
+        </div>
+
+        {fillMode.enabled && (
+          <div className="space-y-2 pl-4 border-l-2 border-blue-300">
+            <div className="space-y-1">
+              <label className="text-xs text-gray-600">Fill Direction</label>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setFillMode({ ...fillMode, direction: "vertical" })}
+                  className={`px-3 py-1 text-xs rounded ${
+                    fillMode.direction === "vertical"
+                      ? "bg-blue-500 text-white"
+                      : "bg-gray-200"
+                  }`}
+                >
+                  ↓ Vertical (Down)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFillMode({ ...fillMode, direction: "horizontal" })}
+                  className={`px-3 py-1 text-xs rounded ${
+                    fillMode.direction === "horizontal"
+                      ? "bg-blue-500 text-white"
+                      : "bg-gray-200"
+                  }`}
+                >
+                  → Horizontal (Right)
+                </button>
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-xs text-gray-600">Group By Dimension</label>
+              <div className="text-xs text-gray-500 mb-1">
+                Select a dimension to group by (e.g., "nationality" for top countries)
+              </div>
+              {measures.length > 0 && measures[0].dataset_id && (
+                <DimensionSelector
+                  datasetId={measures[0].dataset_id}
+                  value={measures[0].group_by || ""}
+                  onChange={(dimension) => {
+                    const updated = [...measures];
+                    updated[0] = { ...updated[0], group_by: dimension };
+                    setMeasures(updated);
+                  }}
+                />
+              )}
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-xs text-gray-600">Return Type</label>
+              <div className="flex gap-4">
+                <label className="flex items-center gap-1 text-xs">
+                  <input
+                    type="checkbox"
+                    checked={fillMode.return_dimension}
+                    onChange={(e) => setFillMode({ ...fillMode, return_dimension: e.target.checked })}
+                  />
+                  Dimension Values
+                </label>
+                <label className="flex items-center gap-1 text-xs">
+                  <input
+                    type="checkbox"
+                    checked={fillMode.return_measure}
+                    onChange={(e) => setFillMode({ ...fillMode, return_measure: e.target.checked })}
+                  />
+                  Measure Values
+                </label>
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-xs text-gray-600">Target Range</label>
+              <div className="flex gap-2 items-center">
+                <input
+                  type="text"
+                  value={fillMode.target_range?.start_cell || ""}
+                  onChange={(e) => setFillMode({
+                    ...fillMode,
+                    target_range: {
+                      ...fillMode.target_range,
+                      start_cell: e.target.value.toUpperCase(),
+                      end_cell: fillMode.target_range?.end_cell || e.target.value.toUpperCase(),
+                    },
+                  })}
+                  placeholder="A1"
+                  className="px-2 py-1 text-xs border rounded w-20"
+                  pattern="[A-Z]+\d+"
+                />
+                <span className="text-xs text-gray-500">to</span>
+                <input
+                  type="text"
+                  value={fillMode.target_range?.end_cell || ""}
+                  onChange={(e) => setFillMode({
+                    ...fillMode,
+                    target_range: {
+                      ...fillMode.target_range,
+                      end_cell: e.target.value.toUpperCase(),
+                    },
+                  })}
+                  placeholder="A10"
+                  className="px-2 py-1 text-xs border rounded w-20"
+                  pattern="[A-Z]+\d+"
+                />
+              </div>
+              <p className="text-xs text-gray-500">
+                {fillMode.target_range
+                  ? `Will fill ${fillMode.target_range.start_cell}:${fillMode.target_range.end_cell}`
+                  : "Enter cell range (e.g., A1:A10)"}
+              </p>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-xs text-gray-600">If array is larger than range</label>
+              <select
+                value={fillMode.overflow_behavior}
+                onChange={(e) => setFillMode({
+                  ...fillMode,
+                  overflow_behavior: e.target.value as "truncate" | "extend" | "error",
+                })}
+                className="px-2 py-1 text-xs border rounded w-full"
+              >
+                <option value="truncate">Truncate (fill only selected range)</option>
+                <option value="extend">Extend (fill beyond range if needed)</option>
+                <option value="error">Show error</option>
+              </select>
+            </div>
+          </div>
+        )}
+      </div>
 
       <div className="flex justify-end gap-2 pt-2">
         <button

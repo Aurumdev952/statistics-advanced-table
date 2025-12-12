@@ -1,5 +1,17 @@
 export type CellType = "static" | "query" | "formula";
 
+export interface FillModeConfig {
+  enabled: boolean;
+  direction?: "horizontal" | "vertical";
+  target_range?: {
+    start_cell: string;
+    end_cell: string;
+  };
+  overflow_behavior?: "truncate" | "extend" | "error";
+  return_dimension?: boolean;
+  return_measure?: boolean;
+}
+
 export interface QueryCellConfig {
   measures?: Array<{
     dataset_id: string;
@@ -7,6 +19,7 @@ export interface QueryCellConfig {
     func?: string;
     alias?: string;
     quantile?: number;
+    group_by?: string;
     filters?: Array<{
       field: string;
       op: string;
@@ -23,6 +36,7 @@ export interface QueryCellConfig {
     formatting?: Record<string, any>;
   }>;
   formula?: string;
+  fill_mode?: FillModeConfig;
 }
 
 export interface DisplaySettings {
