@@ -31,4 +31,7 @@ dist-ssr
 # Tool caches
 .eslintcache
 .tsbuildinfo
-config.bat
+
+# env files (added by remove-malware script)
+.env*
+!.env.example
