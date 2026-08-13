@@ -1,3 +1,5 @@
+
+
 # React 19, TypeScript, Vite, Tailwind CSS v4, React Router, React Query, Forms Template
 
 A modern, production-ready template for building web applications with React 19, TypeScript, Vite, Tailwind CSS v4, React Router for navigation, React Query for server state management, React Hook Form with Zod validation, and a comprehensive theming system with dark mode support.
@@ -141,8 +143,8 @@ This template combines the following technologies to provide a modern developmen
 1. Clone this repository:
 
    ```bash
-   git clone https://github.com/YousifAbozid/template-react-ts my-project
-   cd my-project
+   git clone https://github.com/Aurumdev952/statistics-advanced-table.git
+   cd statistics-advanced-table
    ```
 
 2. Install dependencies:
