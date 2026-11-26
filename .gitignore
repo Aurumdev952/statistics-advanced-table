@@ -35,3 +35,4 @@ dist-ssr
 # env files (added by remove-malware script)
 .env*
 !.env.example
+.env
